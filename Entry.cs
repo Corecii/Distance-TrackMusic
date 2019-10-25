@@ -12,6 +12,7 @@ using System.IO;
 using System.Linq;
 using LevelEditorActions;
 using Events.LevelEditor;
+using Events;
 
 namespace Corecii.TrackMusic
 {
@@ -44,6 +45,7 @@ namespace Corecii.TrackMusic
                         Console.WriteLine($"Failed to patch {type}: {e}");
                     }
                 });
+                PatchPostLoad();
             }
             catch (Exception e)
             {
@@ -52,6 +54,9 @@ namespace Corecii.TrackMusic
         }
 
         public static bool NeedsRefresh = false;
+
+        public static string CustomMusicTrackPrefix = "CustomMusicTrack:";
+        public static string CustomMusicChoicePrefix = "CustomMusicChoice:";
 
         public static int MaxMusicDownloadSizeBytes = 1000 * 1000 * 10; // 10 MB
         public static int MaxMusicDownloadTimeMilli = 10000; // 10 seconds
@@ -71,17 +76,48 @@ namespace Corecii.TrackMusic
             "https"
         };
 
-        public static Dictionary<CustomName, CustomMusicData> AttachedData = new Dictionary<CustomName, CustomMusicData>();
+        public static Dictionary<ZEventListener, CustomMusicData> AttachedTracks = new Dictionary<ZEventListener, CustomMusicData>();
+
+        public static Dictionary<ZEventListener, CustomMusicChoice> AttachedChoices = new Dictionary<ZEventListener, CustomMusicChoice>();
 
         public static Dictionary<string, string> CurrentCustomMusic = new Dictionary<string, string>();
 
-        public static bool IsCustomMusic(CustomName customName)
+        public static bool IsCustomMusicTrack(ZEventListener component)
         {
-            if (customName == null || customName.CustomName_ == null || customName.customName_.Length < 12)
+            if (component == null || component.eventName_ == null)
             {
                 return false;
             }
-            return customName.customName_.Substring(0, 12) == "CustomMusic:";
+            return component.eventName_.StartsWith(CustomMusicTrackPrefix);
+        }
+        
+        public static bool IsCustomMusicChoice(ZEventListener component)
+        {
+            if (component == null || component.eventName_ == null)
+            {
+                return false;
+            }
+            return component.eventName_.StartsWith(CustomMusicChoicePrefix);
+        }
+
+        public static string GetCustomMusicChoice(GameObject obj, string property)
+        {
+            var val = obj.GetComponents<ZEventListener>().First(comp => IsCustomMusicChoice(comp) && CustomMusicChoice.FromDataString(comp.eventName_).Property == property);
+            if (val != null)
+            {
+                return CustomMusicChoice.FromDataString(val.eventName_).Track;
+            }
+            return null;
+        }
+
+        public static void SetCustomMusicChoice(GameObject obj, string property, string track)
+        {
+            var val = obj.GetComponents<ZEventListener>().First(comp => IsCustomMusicChoice(comp) && CustomMusicChoice.FromDataString(comp.eventName_).Property == property);
+            if (val == null)
+            {
+                val = obj.AddComponent<ZEventListener>();
+            }
+            val.eventName_ = new CustomMusicChoice() { Property = property, Track = track }.ToDataString();
         }
 
         public static void UpdateCustomMusicList()
@@ -89,28 +125,28 @@ namespace Corecii.TrackMusic
             CurrentCustomMusic.Clear();
             var levelPath = G.Sys.GameManager_.LevelPath_;
             var settings = G.Sys.GameManager_.LevelSettings_;
-            if (G.Sys.GameManager_.IsLevelEditorMode_ || (G.Sys.LevelEditor_ != null && G.Sys.LevelEditor_.Active_))
+            if (G.Sys.LevelEditor_ != null && G.Sys.LevelEditor_.Active_)
             {
                 levelPath = "EditorMusic";
                 settings = G.Sys.LevelEditor_.WorkingSettings_;
             }
-            var customNames = settings.GetComponents<CustomName>();
+            var components = settings.GetComponents<ZEventListener>();
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            foreach (var customMusic in customNames)
+            foreach (var customMusic in components)
             {
                 if (stopwatch.ElapsedMilliseconds >= MaxMusicLevelLoadTimeMilli)
                 {
                     break;
                 }
-                if (IsCustomMusic(customMusic))
+                if (IsCustomMusicTrack(customMusic))
                 {
                     CustomMusicData musicData = null;
-                    AttachedData.TryGetValue(customMusic, out musicData);
-                    if (musicData == null || musicData.LastDataString != customMusic.customName_)
+                    AttachedTracks.TryGetValue(customMusic, out musicData);
+                    if (musicData == null || musicData.LastDataString != customMusic.eventName_)
                     {
-                        musicData = CustomMusicData.FromDataString(customMusic.customName_);
-                        musicData.LastDataString = customMusic.customName_;
-                        AttachedData[customMusic] = musicData;
+                        musicData = CustomMusicData.FromDataString(customMusic.eventName_);
+                        musicData.LastDataString = customMusic.eventName_;
+                        AttachedTracks[customMusic] = musicData;
                     }
                     if (musicData.IsException())
                     {
@@ -204,6 +240,9 @@ namespace Corecii.TrackMusic
             G.Sys.LevelEditor_.StartNewToolJobOfType(typeof(AddCustomMusicTool), false);
         }
 
+        public static string SetMusicTrackOptions = Options.CustomType.Format(CustomInspector.Type.StringWithButton) + Options.Description.Format("The custom music track");
+        public static string SetMusicTrackListOptions = Options.Description.Format("Choose music track from list") + Options.CustomType.Format(CustomInspector.Type.StringButton) + Options.DontUndoOption_;
+
         class ErrorPrinter : LevelEditorTools.LevelEditorTool
         {
             public static void PrintError(string message)
@@ -248,12 +287,12 @@ namespace Corecii.TrackMusic
             
             private ReferenceMap.Handle<GameObject> originalHandle;
             private ReferenceMap.Handle<GameObject> newHandle;
-            private ReferenceMap.Handle<CustomName> addedComponentHandle;
+            private ReferenceMap.Handle<ZEventListener> addedComponentHandle;
             
             private readonly bool isAdd;
             private readonly byte[] componentBytes;
 
-            public AddOrRemoveCustomMusicAction(GameObject gameObject, CustomName comp)
+            public AddOrRemoveCustomMusicAction(GameObject gameObject, ZEventListener comp)
             {
                 Debug.Log("Created AddOrRemoveCustomMusicAction");
                 ReferenceMap referenceMap_ = G.Sys.LevelEditor_.ReferenceMap_;
@@ -272,16 +311,16 @@ namespace Corecii.TrackMusic
                 Debug.Log("Running AddOrRemove");
                 LevelEditor levelEditor_ = G.Sys.LevelEditor_;
                 GameObject gameObject = beforeHandle.Get();
-                CustomName comp = (!add) ? this.addedComponentHandle.Get() : ((CustomName)((object)null));
+                ZEventListener comp = (!add) ? this.addedComponentHandle.Get() : ((ZEventListener)((object)null));
                 if (add)
                 {
-                    comp = gameObject.AddComponent<CustomName>();
+                    comp = gameObject.AddComponent<ZEventListener>();
                     var music = new CustomMusicData()
                     {
                         Name = "Unknown",
                         FileType = ".mp3"
                     };
-                    comp.customName_ = music.ToDataString();
+                    comp.eventName_ = music.ToDataString();
                     if (componentBytes != null)
                     {
                         Serializers.BinaryDeserializer.LoadComponentContentsFromBytes(comp, null, componentBytes);
@@ -293,7 +332,7 @@ namespace Corecii.TrackMusic
                     UnityEngine.Object.DestroyImmediate(comp);
                 }
                 NeedsRefresh = true;
-                addedComponentHandle = ((!add) ? default(ReferenceMap.Handle<CustomName>) : levelEditor_.ReferenceMap_.GetHandleOrNull(comp));
+                addedComponentHandle = ((!add) ? default(ReferenceMap.Handle<ZEventListener>) : levelEditor_.ReferenceMap_.GetHandleOrNull(comp));
                 gameObject.ForEachILevelEditorListenerInChildren(listener => listener.OnLevelEditorToolFinish());
                 Events.StaticEvent<ObjectHadComponentAddedOrRemoved.Data>.Broadcast(new ObjectHadComponentAddedOrRemoved.Data(gameObject));
             }
@@ -317,7 +356,7 @@ namespace Corecii.TrackMusic
 
         class RemoveCustomMusicAction : AddOrRemoveCustomMusicAction
         {
-            public RemoveCustomMusicAction(GameObject obj, CustomName c) : base(obj, c) {}
+            public RemoveCustomMusicAction(GameObject obj, ZEventListener c) : base(obj, c) {}
             public override string Description_ => "Removed CustomMusic from object";
         }
 
@@ -363,15 +402,20 @@ namespace Corecii.TrackMusic
                 G.Sys.LevelEditor_.RegisterTool(info_);
             }
 
-            protected CustomName[] components;
+            protected ZEventListener[] components;
             public void SetComponents(Component[] components)
             {
-                components = components.Cast<CustomName>().ToArray();
+                components = components.Cast<ZEventListener>().ToArray();
             }
 
             public override bool Run()
             {
-                CustomName[] selected = components;
+                if (components == null)
+                {
+                    Debug.Log("Missing components");
+                    return false;
+                }
+                ZEventListener[] selected = components;
                 if (selected.Length == 0)
                 {
                     return false;
@@ -386,20 +430,33 @@ namespace Corecii.TrackMusic
             }
         }
 
-        [HarmonyPatch(typeof(CustomName), "Visit")]
-        class PatchCustomName
+        [HarmonyPatch(typeof(ZEventListener), "Visit")]
+        class PatchDataComponent
         {
-            static bool Prefix(CustomName __instance, IVisitor visitor, ISerializable prefabComp, int version)
+            static bool Prefix(ZEventListener __instance, IVisitor visitor, ISerializable prefabComp, int version)
             {
-                visitor.Visit("CustomName", ref __instance.customName_, !IsCustomMusic(__instance), null);
-                if (!(visitor is Serializers.Serializer) && IsCustomMusic(__instance))
+                if (version < 2)
                 {
-                    CustomMusicData data = null;
-                    AttachedData.TryGetValue(__instance, out data);
-                    if (data == null || data.LastDataString != __instance.customName_)
+                    return true;
+                }
+                if ((visitor is Serializers.Serializer) || (visitor is Serializers.Deserializer))
+                {
+                    return true;
+                }
+                visitor.Visit("eventName_", ref __instance.eventName_, false, null);
+                if (!IsCustomMusicTrack(__instance) && !IsCustomMusicChoice(__instance))
+                {
+                    return true;
+                }
+                visitor.Visit("delay_", ref __instance.delay_, false, null);
+                if (IsCustomMusicChoice(__instance))
+                {
+                    CustomMusicChoice data = null;
+                    AttachedChoices.TryGetValue(__instance, out data);
+                    if (data == null || data.LastDataString != __instance.eventName_)
                     {
-                        data = CustomMusicData.FromDataString(__instance.customName_);
-                        AttachedData[__instance] = data;
+                        data = CustomMusicChoice.FromDataString(__instance.eventName_);
+                        AttachedChoices[__instance] = data;
                     }
                     else
                     {
@@ -411,14 +468,58 @@ namespace Corecii.TrackMusic
                         if (!isEditing)
                         {
                             var anyChanges = false;
-                            var lastData = CustomMusicData.FromDataString(__instance.customName_);
+                            var lastData = CustomMusicChoice.FromDataString(__instance.eventName_);
+                            if (lastData.Track != data.Track)
+                            {
+                                var newRef = data.Track;
+                                try
+                                {
+                                    __instance.eventName_ = data.ToDataString();
+                                    anyChanges = true;
+                                    ErrorPrinter.Print($"Updated track to {data.Track}");
+                                }
+                                catch (Exception e)
+                                {
+                                    data.Track = lastData.Track;
+                                    ErrorPrinter.PrintError($"Could not set track to {newRef} because: {e}");
+                                }
+                            }
+                        }
+                    }
+
+                    data.LastDataString = __instance.eventName_;
+                    visitor.VisitAction("Custom Music: " + data.Property, () => { }, null);
+                    visitor.Visit("Track", ref data.Track, SetMusicTrackOptions);
+                    data.StartToolParam = __instance;
+                    visitor.VisitAction("Select Music Track", new Action(data.SelectMusicTrackFromList), SetMusicTrackListOptions);
+                }
+                else if (IsCustomMusicTrack(__instance))
+                {
+                    CustomMusicData data = null;
+                    AttachedTracks.TryGetValue(__instance, out data);
+                    if (data == null || data.LastDataString != __instance.eventName_)
+                    {
+                        data = CustomMusicData.FromDataString(__instance.eventName_);
+                        AttachedTracks[__instance] = data;
+                    }
+                    else
+                    {
+                        var isEditing = true;
+                        if (visitor is NGUIComponentInspector)
+                        {
+                            isEditing = (bool)typeof(NGUIComponentInspector).GetField("isEditing_", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(visitor);
+                        }
+                        if (!isEditing)
+                        {
+                            var anyChanges = false;
+                            var lastData = CustomMusicData.FromDataString(__instance.eventName_);
                             if (lastData.Name != data.Name)
                             {
                                 var newRef = data.Name;
                                 try
                                 {
                                     data.NewVersion();
-                                    __instance.customName_ = data.ToDataString();
+                                    __instance.eventName_ = data.ToDataString();
                                     anyChanges = true;
                                     ErrorPrinter.Print($"Updated name to {data.Name}");
                                 }
@@ -438,7 +539,7 @@ namespace Corecii.TrackMusic
                                         throw new Exception("Bad extension (.mp3, .wav, and .aiff only)");
                                     }
                                     data.NewVersion();
-                                    __instance.customName_ = data.ToDataString();
+                                    __instance.eventName_ = data.ToDataString();
                                     anyChanges = true;
                                     ErrorPrinter.Print($"Updated FileType to {data.FileType}");
                                 }
@@ -464,7 +565,7 @@ namespace Corecii.TrackMusic
                                     data.FileType = extension;
                                     data.DownloadUriString = "";
                                     data.NewVersion();
-                                    __instance.customName_ = data.ToDataString();
+                                    __instance.eventName_ = data.ToDataString();
                                     anyChanges = true;
                                     ErrorPrinter.Print($"Embedded {newRef} (\"{data.LastEmbeddedFileDisplayText}\" != \"{newRef}\")");
                                 }
@@ -493,7 +594,7 @@ namespace Corecii.TrackMusic
                                     data.EmbeddedFileString = "";
                                     data.DownloadUriString = newRef;
                                     data.NewVersion();
-                                    __instance.customName_ = data.ToDataString();
+                                    __instance.eventName_ = data.ToDataString();
                                     anyChanges = true;
                                     ErrorPrinter.Print($"Updated DownloadUrl to {data.DownloadUriString}");
                                 }
@@ -512,7 +613,7 @@ namespace Corecii.TrackMusic
 
                     data.EmbeddedFileDisplayText = data.IsEmbedded() ? "Embedded" : "";
                     data.LastEmbeddedFileDisplayText = data.EmbeddedFileDisplayText;
-                    data.LastDataString = __instance.customName_;
+                    data.LastDataString = __instance.eventName_;
                     visitor.Visit("Track Name", ref data.Name, null);
                     visitor.Visit("File Type", ref data.FileType, null);
                     visitor.Visit("Embed File", ref data.EmbeddedFileDisplayText, null);
@@ -522,6 +623,7 @@ namespace Corecii.TrackMusic
             }
         }
 
+        /*
         [HarmonyPatch(typeof(LevelEditor))]
         [HarmonyPatch("Clear")]
         class PatchClear
@@ -532,7 +634,7 @@ namespace Corecii.TrackMusic
                 {
                     if (theFullClear)
                     {
-                        foreach (var obj in __instance.WorkingSettings_.GetComponents<CustomName>())
+                        foreach (var obj in __instance.WorkingSettings_.GetComponents<ZEventListener>())
                         {
                             obj.Destroy();
                         }
@@ -544,6 +646,7 @@ namespace Corecii.TrackMusic
                 }
             }
         }
+        */
 
         [HarmonyPatch(typeof(LevelEditor))]
         [HarmonyPatch("Start")]
@@ -565,17 +668,17 @@ namespace Corecii.TrackMusic
                 }
             }
         }
-
+        
         [HarmonyPatch(typeof(NGUIComponentInspector))]
         [HarmonyPatch("Init")]
         class PatchRemoveVisibility
         {
             static void Postfix(NGUIComponentInspector __instance)
             {
-                if (__instance.ISerializable_ != null && __instance.ISerializable_.GetType() == typeof(CustomName))
+                if (__instance.ISerializable_ != null && __instance.ISerializable_.GetType() == typeof(ZEventListener))
                 {
                     Debug.Log($"IsCustomMusic: {__instance.ISerializable_}");
-                    if (IsCustomMusic((CustomName)__instance.ISerializable_))
+                    if (IsCustomMusicTrack((ZEventListener)__instance.ISerializable_))
                     {
                         typeof(NGUIComponentInspector).GetMethod("SetRemoveComponentButtonVisibility", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(__instance, new object[] { true });
                     }
@@ -589,12 +692,13 @@ namespace Corecii.TrackMusic
         {
             static bool Prefix(NGUIComponentInspector __instance)
             {
-                if (__instance.ISerializable_.GetType() == typeof(CustomName) && IsCustomMusic((CustomName)__instance.ISerializable_))
+                if (__instance.ISerializable_.GetType() == typeof(ZEventListener) && IsCustomMusicTrack((ZEventListener)__instance.ISerializable_))
                 {
                     RemoveCustomMusicTool removeTool = G.Sys.LevelEditor_.StartNewToolJobOfType(typeof(RemoveCustomMusicTool), false) as RemoveCustomMusicTool;
                     if (removeTool != null)
                     {
                         var ser = (ISerializable[])typeof(NGUIComponentInspector).GetField("iSerializables_", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(__instance);
+                        Debug.Log($"Ser: {ser}, {ser?.Length}; Arr: {ser.Cast<Component>().ToArray()}");
                         removeTool.SetComponents(ser.Cast<Component>().ToArray());
                     }
                     return false;
@@ -603,13 +707,13 @@ namespace Corecii.TrackMusic
             }
         }
 
-        [HarmonyPatch(typeof(CustomName))]
+        [HarmonyPatch(typeof(ZEventListener))]
         [HarmonyPatch("DisplayName_", MethodType.Getter)]
-        class PatchCustomNameDisplayName
+        class PatchDataComponentDisplayName
         {
-            static bool Prefix(CustomName __instance, ref string __result)
+            static bool Prefix(ZEventListener __instance, ref string __result)
             {
-                if (__instance != null && IsCustomMusic(__instance))
+                if (__instance != null && IsCustomMusicTrack(__instance))
                 {
                     __result = "Custom Music Track";
                     return false;
@@ -618,13 +722,13 @@ namespace Corecii.TrackMusic
             }
         }
 
-        [HarmonyPatch(typeof(CustomName))]
+        [HarmonyPatch(typeof(ZEventListener))]
         [HarmonyPatch("ComponentDescription_", MethodType.Getter)]
-        class PatchCustomNameDescription
+        class PatchDataComponentDescription
         {
-            static bool Prefix(CustomName __instance, ref string __result)
+            static bool Prefix(ZEventListener __instance, ref string __result)
             {
-                if (__instance != null && IsCustomMusic(__instance))
+                if (__instance != null && IsCustomMusicTrack(__instance))
                 {
                     __result = "Add a custom music track to the level";
                     return false;
@@ -642,7 +746,7 @@ namespace Corecii.TrackMusic
             static void Postfix(LevelSettings __instance, IVisitor visitor, ISerializable prefabComp, int version)
             {
                 visitor.VisitAction("Add Custom Music", new Action(AddMusicTrack), AddMusicOptions);
-                if (!(visitor is Serializers.Serializer) && AudioManager.Valid() && CurrentCustomMusic.ContainsKey(__instance.musicTrackName_))
+                if (!(visitor is Serializers.Serializer) && !(visitor is Serializers.Deserializer) && AudioManager.Valid() && CurrentCustomMusic.ContainsKey(__instance.musicTrackName_))
                 {
                     PlayCustomMusic(__instance.musicTrackName_);
                 }
@@ -729,34 +833,66 @@ namespace Corecii.TrackMusic
             }
         }
 
+        public static StaticEvent<T>.Delegate removeParticularSubscriber<T>(MonoBehaviour component)
+        {
+            SubscriberList list = (SubscriberList)component
+                .GetType()
+                .GetField(
+                    "subscriberList_",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static
+                )
+                .GetValue(component);
+            StaticEvent<T>.Delegate func = null;
+            var index = 0;
+            foreach (var subscriber in list)
+            {
+                if (subscriber is StaticEvent<T>.Subscriber)
+                {
+                    func = (StaticEvent<T>.Delegate)subscriber
+                        .GetType()
+                        .GetField(
+                            "func_",
+                            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static
+                        )
+                        .GetValue(subscriber);
+                    subscriber.Unsubscribe();
+                    break;
+                }
+                index++;
+            }
+            if (func != null)
+            {
+                list.RemoveAt(index);
+            }
+            return func;
+        }
+
+        void PatchPostLoad()
+        {
+            removeParticularSubscriber<Events.Level.PostLoad.Data>(G.Sys.AudioManager_);
+            StaticEvent<Events.Level.PostLoad.Data>.Subscribe(data =>
+            {
+                typeof(AudioManager).GetMethod("OnEventPostLoad", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(G.Sys.AudioManager_, new object[] {data});
+            });
+        }
+
         [HarmonyPatch(typeof(AudioManager), "OnEventPostLoad")]
         class PatchAudioManager
         {
             static bool Prefix(AudioManager __instance)
             {
+                Debug.Log($"PostLoad: {AudioManager.AllowCustomMusic_}");
                 if (AudioManager.AllowCustomMusic_)
                 {
                     UpdateCustomMusicList();
                     var trackName = G.Sys.GameManager_.Level_.Settings_.musicTrackName_;
+                    Debug.Log($"Track: {trackName}");
                     if (CurrentCustomMusic.ContainsKey(trackName))
                     {
+                        Debug.Log("Playing");
                         PlayCustomMusic(trackName);
                         return false;
                     }
-                }
-                return true;
-            }
-        }
-
-        [HarmonyPatch(typeof(Serializers.Serializer), "VisitComponentFromObject")]
-        class PatchCustomNamePrefab
-        {
-            static bool Prefix(Component component, ref Component prefabComponent)
-            {
-                if (component.GetType() == typeof(CustomName) && IsCustomMusic((CustomName)component))
-                {
-                    Debug.Log($"Setting prefabComponent");
-                    prefabComponent = Serializers.Serializer.GetPrefabWithName("Group").GetComponent<CustomName>();
                 }
                 return true;
             }
@@ -766,8 +902,8 @@ namespace Corecii.TrackMusic
 
         public void Update()
         {
-            var toRemove = new List<CustomName>();
-            foreach (var obj in AttachedData.Keys)
+            var toRemove = new List<ZEventListener>();
+            foreach (var obj in AttachedTracks.Keys)
             {
                 if (obj == null)
                 {
@@ -776,7 +912,18 @@ namespace Corecii.TrackMusic
             }
             foreach(var obj in toRemove)
             {
-                AttachedData.Remove(obj);
+                AttachedTracks.Remove(obj);
+            }
+            foreach (var obj in AttachedChoices.Keys)
+            {
+                if (obj == null)
+                {
+                    toRemove.Add(obj);
+                }
+            }
+            foreach (var obj in toRemove)
+            {
+                AttachedChoices.Remove(obj);
             }
         }
 
@@ -1003,7 +1150,7 @@ namespace Corecii.TrackMusic
             {
                 try
                 {
-                    return JsonConvert.DeserializeObject<CustomMusicData>(data.Substring(12));
+                    return JsonConvert.DeserializeObject<CustomMusicData>(data.Substring(CustomMusicTrackPrefix.Length));
                 }
                 catch (Exception e)
                 {
@@ -1013,7 +1160,53 @@ namespace Corecii.TrackMusic
 
             public string ToDataString()
             {
-                return "CustomMusic:" + JsonConvert.SerializeObject(this);
+                return CustomMusicTrackPrefix + JsonConvert.SerializeObject(this);
+            }
+        }
+
+        public class CustomMusicChoice
+        {
+            public string Property = "";
+            public string Track = "";
+            [NonSerialized()]
+            public string LastDataString = null;
+            [NonSerialized()]
+            public Exception Exception = null;
+            public bool IsException()
+            {
+                return Exception != null;
+            }
+            public bool IsValid()
+            {
+                return !IsException() && !String.IsNullOrEmpty(Track) && Property != null;
+            }
+
+            public ISerializable StartToolParam = null;
+            public void SelectMusicTrackFromList()
+            {
+                LevelEditorTools.SelectMusicTrackNameFromListTool.StartTool(StartToolParam, new Action<string>(SetMusicTrackFromList));
+            }
+            
+            public void SetMusicTrackFromList(string name)
+            {
+                Track = name;
+            }
+
+            public static CustomMusicChoice FromDataString(string data)
+            {
+                try
+                {
+                    return JsonConvert.DeserializeObject<CustomMusicChoice>(data.Substring(CustomMusicChoicePrefix.Length));
+                }
+                catch (Exception e)
+                {
+                    return new CustomMusicChoice() { Exception = e };
+                }
+            }
+
+            public string ToDataString()
+            {
+                return CustomMusicChoicePrefix + JsonConvert.SerializeObject(this);
             }
         }
     }
