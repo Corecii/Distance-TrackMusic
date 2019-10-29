@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("Corecii.DiscordRPCEnabler")]
+[assembly: AssemblyTitle("Corecii.CustomTrackMusic")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("Corecii.DiscordRPCEnabler")]
+[assembly: AssemblyProduct("Corecii.CustomTrackMusic")]
 [assembly: AssemblyCopyright("Copyright ©  2016")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("7ee4c9fc-1060-486e-86e4-5fb8fef570ff")]
+[assembly: Guid("7ee4c9fc-1060-476e-86e4-5fb8fef570ff")]
 
 // Version information for an assembly consists of the following four values:
 //
