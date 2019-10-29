@@ -21,6 +21,9 @@ namespace Corecii.TrackMusic
 
         public static int MaxMusicLevelLoadTimeMilli = 20000; // 20 seconds
 
+        public static string MusicTrackOptions = Options.CustomType.Format(CustomInspector.Type.StringWithButton);
+        public static string MusicTrackButtonOptions = Options.CustomType.Format(CustomInspector.Type.StringButton) + Options.DontUndoOption_;
+
         public static Attached<MusicTrack> CachedMusicTrack = new Attached<MusicTrack>();
         public static Attached<MusicChoice> CachedMusicChoice = new Attached<MusicChoice>();
         public static Attached<MusicZoneData> CachedMusicZoneData = new Attached<MusicZoneData>();
@@ -470,6 +473,7 @@ namespace Corecii.TrackMusic
                         if (newRef == "")
                         {
                             data.Embedded = new byte[0];
+                            anyChanges = true;
                         }
                         else
                         {
@@ -502,13 +506,36 @@ namespace Corecii.TrackMusic
                         data.WriteObject(__instance);
                         data.LastWrittenData = __instance.eventName_;
                         data.LastWritten = data.Clone();
+                        var lastTrackName = CurrentTrackName;
+                        if (lastTrackName == old.Name)
+                        {
+                            StopCustomMusic();
+                        }
                         DownloadAllTracks();
+                        if (lastTrackName == data.Name || GetMusicChoiceValue(G.Sys.LevelEditor_.WorkingSettings_.gameObject, "Level") == data.Name)
+                        {
+                            PlayTrack(data.Name, 0f);
+                        }
                     }
                 }
                 
                 visitor.Visit("Name", ref data.Name, null);
                 visitor.Visit("Type", ref data.FileType, null);
-                visitor.Visit("Embed File", ref data.EmbedFile, null);
+                visitor.Visit("Embed File", ref data.EmbedFile, MusicTrackOptions);
+                visitor.VisitAction("Select File", () =>
+                {
+                    var dlgOpen = new System.Windows.Forms.OpenFileDialog();
+                    dlgOpen.Filter = "Distance Music (*.mp3, *.wav, *.aiff)|*.mp3;*.wav;*.aiff|All Files (*.*)|*.*";
+                    dlgOpen.SupportMultiDottedExtensions = true;
+                    dlgOpen.RestoreDirectory = true;
+                    dlgOpen.Title = "Pick Distance music file";
+                    dlgOpen.CheckFileExists = true;
+                    dlgOpen.CheckPathExists = true;
+                    if (dlgOpen.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                    {
+                        data.EmbedFile = dlgOpen.FileName;
+                    }
+                }, MusicTrackButtonOptions);
                 visitor.Visit("Download URL", ref data.DownloadUrl, null);
                 var Error = data.GetError();
                 if (Error == null)

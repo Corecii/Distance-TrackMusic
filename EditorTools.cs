@@ -88,6 +88,7 @@ namespace Corecii.TrackMusic
             public GameObject CreateTrack()
             {
                 GameObject gameObject = Resource.LoadPrefabInstance("Group", true);
+                gameObject.GetComponent<CustomName>().customName_ = "Music Track";
                 var component = gameObject.AddComponent<ZEventListener>();
                 var track = new MusicTrack() { Name = "Unknown" };
                 track.NewVersion();
