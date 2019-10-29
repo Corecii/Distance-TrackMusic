@@ -68,7 +68,7 @@ namespace Corecii.TrackMusic
             {
                 if (theFullClear)
                 {
-                    foreach (var comp in __instance.WorkingSettings_.gameObject.GetComponents<ZEventListener>())
+                    foreach (var comp in __instance.WorkingSettings_.gameObject?.GetComponents<ZEventListener>())
                     {
                         comp.Destroy();
                     }
@@ -181,14 +181,14 @@ namespace Corecii.TrackMusic
                 {
                     return true;
                 }
-                var customName = gameObject.GetComponent<CustomName>();
-                if (customName == null)
+                var component = gameObject.GetComponent<ZEventListener>();
+                if (component == null)
                 {
                     return true;
                 }
-                if (customName.CustomName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
+                if (component.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
                 {
-                    var track = Entry.CachedMusicTrack.GetOr(customName, () => MusicTrack.FromObject(customName));
+                    var track = Entry.CachedMusicTrack.GetOr(component, () => MusicTrack.FromObject(component));
                     if (track == null)
                     {
                         __result = "Music Track?";
@@ -206,9 +206,18 @@ namespace Corecii.TrackMusic
         {
             static bool Prefix(ZEventListener __instance, ref string __result)
             {
-                if (__instance != null && __instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicChoice>()))
+                if (__instance == null)
+                {
+                    return true; 
+                }
+                if (__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicChoice>()))
                 {
                     __result = "Music Choice";
+                    return false;
+                }
+                else if (__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
+                {
+                    __result = "Music Track";
                     return false;
                 }
                 return true;
@@ -221,37 +230,16 @@ namespace Corecii.TrackMusic
         {
             static bool Prefix(ZEventListener __instance, ref string __result)
             {
-                if (__instance != null && __instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicChoice>()))
+                if (__instance == null)
+                {
+                    return true;
+                }
+                if (__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicChoice>()))
                 {
                     __result = "Custom music track choice";
                     return false;
                 }
-                return true;
-            }
-        }
-
-        [HarmonyPatch(typeof(CustomName))]
-        [HarmonyPatch("DisplayName_", MethodType.Getter)]
-        class PatchDisplayNameTrack
-        {
-            static bool Prefix(CustomName __instance, ref string __result)
-            {
-                if (__instance != null && __instance.customName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
-                {
-                    __result = "Music Track";
-                    return false;
-                }
-                return true;
-            }
-        }
-
-        [HarmonyPatch(typeof(CustomName))]
-        [HarmonyPatch("ComponentDescription_", MethodType.Getter)]
-        class PatchDescriptionTrack
-        {
-            static bool Prefix(CustomName __instance, ref string __result)
-            {
-                if (__instance != null && __instance.customName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
+                else if (__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
                 {
                     __result = "Custom music track data";
                     return false;
@@ -271,6 +259,10 @@ namespace Corecii.TrackMusic
                     if (((ZEventListener)__instance.ISerializable_).eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicChoice>()))
                     {
                         typeof(NGUIComponentInspector).GetMethod("SetRemoveComponentButtonVisibility", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(__instance, new object[] { true });
+                    }
+                    else if (((ZEventListener)__instance.ISerializable_).eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
+                    {
+                        typeof(NGUIComponentInspector).GetMethod("SetRemoveComponentButtonVisibility", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(__instance, new object[] { false });
                     }
                 }
             }

@@ -88,9 +88,10 @@ namespace Corecii.TrackMusic
             public GameObject CreateTrack()
             {
                 GameObject gameObject = Resource.LoadPrefabInstance("Group", true);
+                var component = gameObject.AddComponent<ZEventListener>();
                 var track = new MusicTrack() { Name = "Unknown" };
                 track.NewVersion();
-                track.WriteObject(gameObject.GetComponent<CustomName>());
+                track.WriteObject(component);
                 gameObject.ForEachILevelEditorListener(delegate (ILevelEditorListener listener)
                 {
                     listener.LevelEditorStart(true);

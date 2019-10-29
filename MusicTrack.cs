@@ -7,9 +7,9 @@ using System.Text.RegularExpressions;
 
 namespace Corecii.TrackMusic
 {
-    public class MusicTrack : CustomData<CustomName>
+    public class MusicTrack : CustomData<ZEventListener>
     {
-        public static CustomDataInfo Info = new CustomDataInfo(typeof(MusicTrack), typeof(CustomName), "MusicTrack:");
+        public static CustomDataInfo Info = new CustomDataInfo(typeof(MusicTrack), typeof(ZEventListener), "MusicTrack:");
 
         public static string[] AllowedExtensions = new string[]
         {
@@ -24,13 +24,13 @@ namespace Corecii.TrackMusic
             "https"
         };
 
-        public override string StringFromObject(CustomName obj)
+        public override string StringFromObject(ZEventListener obj)
         {
-            return obj.customName_;
+            return obj.eventName_;
         }
-        public override void StringToObject(CustomName obj, string str)
+        public override void StringToObject(ZEventListener obj, string str)
         {
-            obj.customName_ = str;
+            obj.eventName_ = str;
         }
 
         public string Name = "Unknown";
@@ -127,7 +127,7 @@ namespace Corecii.TrackMusic
             return Error;
         }
 
-        public static MusicTrack FromObject(CustomName obj)
+        public static MusicTrack FromObject(ZEventListener obj)
         {
             var newThis = new MusicTrack();
             var success = newThis.ReadObject(obj);

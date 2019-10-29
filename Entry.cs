@@ -73,7 +73,6 @@ namespace Corecii.TrackMusic
 
         public static bool PlayTrack(string trackName, float fadeTimeMs = 2000f, bool force = false)
         {
-            UnityEngine.Debug.Log($"Playing custom music track {trackName}");
             if (G.Sys.AudioManager_.CurrentMusicState_ == AudioManager.MusicState.CustomMusic)
             {
                 return false;
@@ -130,7 +129,6 @@ namespace Corecii.TrackMusic
 
         public static void StopCustomMusic()
         {
-            UnityEngine.Debug.Log("Stopping custom music");
             if (PlayingMusic && G.Sys.AudioManager_.CurrentMusicState_ == AudioManager.MusicState.PerLevel)
             {
                 typeof(AudioManager).GetField("perLevelMusicOverride_", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(G.Sys.AudioManager_, false);
@@ -357,33 +355,21 @@ namespace Corecii.TrackMusic
             }
         }
 
-        [HarmonyPatch(typeof(GameManager), "OnEventSceneLoadFinish")]
-        class PatchSceneLoadFinish
-        {
-            public static void Postfix(GameManager __instance)
-            {
-                UnityEngine.Debug.Log("SceneLoadFinish");
-            }
-        }
-
-        [HarmonyPatch(typeof(AudioManager), "SwitchToOfficialMusic")]
-        class PatchDbg1
-        {
-            public static void Postfix(AudioManager __instance)
-            {
-                UnityEngine.Debug.Log("SwitchToOfficialMusic");
-            }
-        }
-
         [HarmonyPatch(typeof(LevelSettings), "Reset")]
         class PatchLevelSettingsReset
         {
             static void Postfix(LevelSettings __instance)
             {
+                if (G.Sys.LevelEditor_ != null && G.Sys.LevelEditor_.Active_)
+                {
+                    UnityEngine.Debug.Log("Not resetting music settings because this is LevelEditor");
+                    return;
+                }
                 foreach (var comp in __instance.gameObject.GetComponents<ZEventListener>())
                 {
                     comp.Destroy();
                 }
+                EditorPatches.NeedsRefresh = true;
             }
         }
 
@@ -440,33 +426,34 @@ namespace Corecii.TrackMusic
             }
         }
 
-        [HarmonyPatch(typeof(CustomName), "Visit")]
+        [HarmonyPatch(typeof(ZEventListener), "Visit")]
         class PatchVisitForMusicTrack
         {
-            static void Postfix(CustomName __instance, IVisitor visitor)
+            static void Postfix(ZEventListener __instance, IVisitor visitor)
             {
-                if (!__instance.customName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
+                if (!__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>()))
                 {
                     return;
                 }
                 CachedMusicTrack.GetOr(__instance, () => MusicTrack.FromObject(__instance));
             }
-            static bool Prefix(CustomName __instance, IVisitor visitor, ISerializable prefabComp, int version)
+            static bool Prefix(ZEventListener __instance, IVisitor visitor, ISerializable prefabComp, int version)
             {
                 if (!(visitor is NGUIComponentInspector))
                 {
                     return true;
                 }
-                if (!__instance.customName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>())) {
+                if (!__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicTrack>())) {
                     return true;
                 }
-                visitor.Visit("CustomName", ref __instance.customName_, false, null);
+                visitor.Visit("eventName_", ref __instance.eventName_, false, null);
+                visitor.Visit("delay_", ref __instance.delay_, false, null);
                 var isEditing = (bool)typeof(NGUIComponentInspector).GetField("isEditing_", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(visitor);
                 var data = CachedMusicTrack.GetOr(__instance, () => new MusicTrack());
-                if (data.LastWrittenData != __instance.customName_)
+                if (data.LastWrittenData != __instance.eventName_)
                 {
                     data.ReadObject(__instance);
-                    data.LastWrittenData = __instance.customName_;
+                    data.LastWrittenData = __instance.eventName_;
                     data.EmbedFile = (data.Embedded.Length > 0 ? "Embedded" : "");
                     data.LastWritten = data.Clone();
                 }
@@ -491,14 +478,18 @@ namespace Corecii.TrackMusic
                                 newRef = newRef.Trim('"', '\'');
                                 var extension = Path.GetExtension(newRef);
                                 var file = FileEx.ReadAllBytes(newRef);
-                                data.Embedded = file;
+                                data.Embedded = file ?? throw new Exception("Missing file");
                                 data.FileType = extension;
                                 data.DownloadUrl = "";
                                 anyChanges = true;
                             }
                             catch (Exception e)
                             {
+                                data.Embedded = new byte[0];
+                                data.FileType = ".mp3";
+                                anyChanges = true;
                                 // TODO: warn user
+                                UnityEngine.Debug.Log($"Failed to embed {newRef} because {e}");
                             }
                         }
                     }
@@ -509,7 +500,7 @@ namespace Corecii.TrackMusic
                         data.EmbedFile = (data.Embedded.Length > 0 ? "Embedded" : "");
                         data.NewVersion();
                         data.WriteObject(__instance);
-                        data.LastWrittenData = __instance.customName_;
+                        data.LastWrittenData = __instance.eventName_;
                         data.LastWritten = data.Clone();
                         DownloadAllTracks();
                     }
