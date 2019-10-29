@@ -16,9 +16,15 @@ Features:
 ## Installation
 
 1. Install [Spectrum](https://github.com/Ciastex/Spectrum/releases)
-2. Open your Distance folder, then navigate to Distance_Data -> Spectrum -> Plugins
+2. Open your Distance folder, then navigate to Distance_Data -> Spectrum -> Plugins. Your Distance folder is likely located at `C:\Program File (x86)\Steam\steamapps\common\Distance`
 3. Download [TrackMusic](https://github.com/Corecii/Distance-TrackMusic/releases)
 4. Open the zip file and place the "CustomTrackMusic" folder inside the "Plugins" folder from step 2.
+
+---
+
+## Try It Out!
+
+The very short [Music Test](https://steamcommunity.com/sharedfiles/filedetails/?id=1901418583) level includes a custom global music track and a triggered music track. The music tracks are embedded in the level file and will play automatically if you have the mod installed.
 
 ---
 
@@ -54,3 +60,4 @@ Your embedded music file will now play for mod users, even when they download fr
 * Only `.mp3`, `.wav`, and `.aiff` are supported.
 * If you stop using the mod, you can still re-publish with music data intact. Music data is stored as Event Listeners in specific objects in the map.
 * Sometimes you need to load a level twice to get rid of the previous Music Choice in Level Settings (or to load the new one properly).
+* The "Toggle Custom Music" state persists outside the level editor. Be sure to turn custom music back on before leaving the editor!
