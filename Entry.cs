@@ -575,10 +575,6 @@ namespace Corecii.TrackMusic
             {
                 if (!__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicChoice>()))
                 {
-                    if (visitor is Serializers.Deserializer)
-                    {
-                        UnityEngine.Debug.Log($"Prefix doesn't match {CustomDataInfo.GetPrefix<MusicChoice>()}");
-                    }
                     return;
                 }
                 CachedMusicChoice.GetOr(__instance, () => MusicChoice.FromObject(__instance));

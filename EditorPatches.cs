@@ -61,24 +61,6 @@ namespace Corecii.TrackMusic
             }
         }
 
-        /*
-        [HarmonyPatch(typeof(LevelEditor), "Clear")]
-        class PatchLevelEditorClear
-        {
-            static void Postfix(LevelEditor __instance, bool theFullClear)
-            {
-                if (theFullClear)
-                {
-                    foreach (var comp in __instance.WorkingSettings_.gameObject?.GetComponents<ZEventListener>())
-                    {
-                        comp.Destroy();
-                    }
-                    NeedsRefresh = true;
-                }
-            }
-        }
-        */
-
         [HarmonyPatch(typeof(LevelDataTab), "Update")]
         class PatchLevelDataTabUpdate
         {
