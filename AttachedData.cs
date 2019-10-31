@@ -39,13 +39,18 @@ namespace Corecii.TrackMusic
             return data;
         }
 
-        public void  Set(object obj, T data)
+        public void Set(object obj, T data)
         {
             if (obj == null)
             {
                 return;
             }
             attached[obj] = data;
+        }
+
+        public void Remove(object obj)
+        {
+            attached.Remove(obj);
         }
 
         public void Update()

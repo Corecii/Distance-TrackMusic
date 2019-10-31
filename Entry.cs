@@ -37,6 +37,7 @@ namespace Corecii.TrackMusic
 
         public void Initialize(IManager manager, string ipcIdentifier)
         {
+            UnityEngine.Application.SetStackTraceLogType(UnityEngine.LogType.Log, UnityEngine.StackTraceLogType.None);
             Instance = this;
 
             MusicTrack.Info.Register();
@@ -358,21 +359,41 @@ namespace Corecii.TrackMusic
             }
         }
 
-        [HarmonyPatch(typeof(LevelSettings), "Reset")]
-        class PatchLevelSettingsReset
+        public static void ResetLevelSettings(LevelSettings __instance)
         {
-            static void Postfix(LevelSettings __instance)
+            UnityEngine.Debug.Log("Resetting music");
+            foreach (var comp in __instance.gameObject.GetComponents<ZEventListener>())
             {
-                if (G.Sys.LevelEditor_ != null && G.Sys.LevelEditor_.Active_)
+                UnityEngine.Object.DestroyImmediate(comp); // required for when level clear and load happen on the same frame (all the time)
+                CachedMusicChoice.Remove(comp);
+                CachedMusicTrack.Remove(comp);
+                comp.Destroy();
+            }
+            __instance.gameObject.RemoveComponents<ZEventListener>();
+            Instance.Update();
+            EditorPatches.NeedsRefresh = true;
+        }
+
+        [HarmonyPatch(typeof(Level), "ClearAndReset")]
+        class PatchLevelClearAndReset
+        {
+            public static bool isWorkingStateLevel = false; // handles level editor play mode -> level editor transition
+            static void Prefix(Level __instance, bool destroyObjects)
+            {
+                if (destroyObjects && !isWorkingStateLevel)
                 {
-                    UnityEngine.Debug.Log("Not resetting music settings because this is LevelEditor");
-                    return;
+                    ResetLevelSettings(__instance.Settings_);
                 }
-                foreach (var comp in __instance.gameObject.GetComponents<ZEventListener>())
-                {
-                    comp.Destroy();
-                }
-                EditorPatches.NeedsRefresh = true;
+                isWorkingStateLevel = false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Level), "LoadHelperEnumerator")]
+        class PatchLevelLoadHelperEnumerator
+        {
+            static void Prefix(Level __instance, Serializers.Deserializer deserializer, bool loadStaticObjects, bool isWorkingStateLevel, Level.LoadState state)
+            {
+                PatchLevelClearAndReset.isWorkingStateLevel = isWorkingStateLevel;
             }
         }
 
@@ -554,6 +575,10 @@ namespace Corecii.TrackMusic
             {
                 if (!__instance.eventName_.StartsWith(CustomDataInfo.GetPrefix<MusicChoice>()))
                 {
+                    if (visitor is Serializers.Deserializer)
+                    {
+                        UnityEngine.Debug.Log($"Prefix doesn't match {CustomDataInfo.GetPrefix<MusicChoice>()}");
+                    }
                     return;
                 }
                 CachedMusicChoice.GetOr(__instance, () => MusicChoice.FromObject(__instance));

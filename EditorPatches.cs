@@ -61,6 +61,7 @@ namespace Corecii.TrackMusic
             }
         }
 
+        /*
         [HarmonyPatch(typeof(LevelEditor), "Clear")]
         class PatchLevelEditorClear
         {
@@ -76,6 +77,7 @@ namespace Corecii.TrackMusic
                 }
             }
         }
+        */
 
         [HarmonyPatch(typeof(LevelDataTab), "Update")]
         class PatchLevelDataTabUpdate
