@@ -59,5 +59,4 @@ Your embedded music file will now play for mod users, even when they download fr
 * Try to keep the final level size down. You can cut down audio files in Audacity if they're unnecessarily long. You can also re-encode them at a lower quality if you feel that it's necessary.
 * Only `.mp3`, `.wav`, and `.aiff` are supported.
 * If you stop using the mod, you can still re-publish with music data intact. Music data is stored as Event Listeners in specific objects in the map.
-* Sometimes you need to load a level twice to get rid of the previous Music Choice in Level Settings (or to load the new one properly).
 * The "Toggle Custom Music" state persists outside the level editor. Be sure to turn custom music back on before leaving the editor!
